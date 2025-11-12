@@ -4,3 +4,31 @@ venv/
 .venv/
 ENV/
 env/
+
+# Generated/large artifacts
+augmented_images/
+augmented_images/group_images/
+
+# Feature outputs (generated) - keep clean CSV/NPZ out of git
+image_features.csv
+image_features_clean.csv
+image_features_clean.npz
+*.npz
+# If you want to ignore all CSV outputs uncomment the next line
+# *.csv
+
+# Python cache / build
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Misc
+.pytest_cache/
+*.egg-info/
+.DS_Store
+Thumbs.db
+
+# Local environment files
+.env

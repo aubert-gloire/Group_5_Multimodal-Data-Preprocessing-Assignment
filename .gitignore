@@ -31,4 +31,6 @@ __pycache__/
 Thumbs.db
 
 # Local environment files
-.env
+*.env
+*.joblib
+*.pkl

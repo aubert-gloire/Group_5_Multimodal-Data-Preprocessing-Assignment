@@ -34,3 +34,4 @@ Thumbs.db
 *.env
 *.joblib
 *.pkl
+*.npz

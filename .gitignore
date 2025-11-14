@@ -35,6 +35,5 @@ Thumbs.db
 
 # Models folder (do not commit large model binaries)
 facemodels/
-*.joblib
 
 

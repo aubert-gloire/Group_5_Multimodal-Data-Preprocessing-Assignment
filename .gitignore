@@ -33,6 +33,8 @@ Thumbs.db
 # Local environment files
 *.env
 
-# *.joblib
-*.pkl
-*.npz
+# Models folder (do not commit large model binaries)
+facemodels/
+*.joblib
+
+

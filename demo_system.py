@@ -130,24 +130,16 @@ def run_product_recommendation(user_data):
     print("=" * 60)
     
     try:
-        # Add engineered features if missing
-        if 'purchase_date' in user_data and pd.notna(user_data['purchase_date']):
-            try:
-                pd_date = pd.to_datetime(user_data['purchase_date'])
-                user_data['purchase_month'] = pd_date.month
-                user_data['purchase_day'] = pd_date.day
-            except:
-                user_data['purchase_month'] = 0
-                user_data['purchase_day'] = 0
-        else:
-            user_data['purchase_month'] = 0
-            user_data['purchase_day'] = 0
+        # Required features for product recommendation model
+        required_features = [
+            'social_media_platform',
+            'engagement_score',
+            'purchase_interest_score',
+            'review_sentiment',
+            'purchase_amount',
+            'customer_rating'
+        ]
         
-        # Add aggregated features with defaults if missing
-        if 'mean_purchase_amount' not in user_data:
-            user_data['mean_purchase_amount'] = user_data.get('purchase_amount', 100.0)
-        if 'transaction_count' not in user_data:
-            user_data['transaction_count'] = 1
         
         df_user = pd.DataFrame([user_data])
         
@@ -227,7 +219,7 @@ def extract_audio_features(audio_path):
         features['spectral_bandwidth_mean'] = np.mean(spectral_bandwidth)
         features['spectral_bandwidth_std'] = np.std(spectral_bandwidth)
         
-        # Convert to DataFrame with correct column order
+        # Convert to DataFrame with correct column order (must match training)
         feature_cols = [f'mfcc_{i+1}_mean' for i in range(13)] + \
                        [f'mfcc_{i+1}_std' for i in range(13)] + \
                        ['spectral_rolloff_mean', 'spectral_rolloff_std',
@@ -240,6 +232,8 @@ def extract_audio_features(audio_path):
         return pd.DataFrame([features])[feature_cols]
     except Exception as e:
         print(f"Error processing audio: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

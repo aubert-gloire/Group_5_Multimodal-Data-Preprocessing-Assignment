@@ -130,36 +130,52 @@ def run_product_recommendation(user_data):
     print("=" * 60)
     
     try:
-        # Required features for product recommendation model
-        required_features = [
-            'social_media_platform',
-            'engagement_score',
-            'purchase_interest_score',
-            'review_sentiment',
-            'purchase_amount',
-            'customer_rating'
-        ]
-        
-        
+        # Convert user_data to DataFrame
         df_user = pd.DataFrame([user_data])
         
-        # Ensure all required features are present
-        missing_features = [f for f in required_features if f not in df_user.columns]
-        if missing_features:
-            print(f"⚠️  Warning: Missing features: {missing_features}")
-            print("   Using default values for missing features")
-            for feat in missing_features:
-                if feat == 'social_media_platform':
-                    df_user[feat] = 'Twitter'
-                elif feat == 'review_sentiment':
-                    df_user[feat] = 'Neutral'
-                else:
-                    df_user[feat] = 0.0
+        # Remove target column if present (product_category)
+        if 'product_category' in df_user.columns:
+            df_user = df_user.drop(columns=['product_category'])
         
-        # Select only required features (in correct order)
-        df_user = df_user[required_features]
+        # Feature engineering: Extract temporal features from purchase_date
+        if 'purchase_date' in df_user.columns and pd.notna(df_user['purchase_date'].iloc[0]):
+            try:
+                df_user['purchase_date'] = pd.to_datetime(df_user['purchase_date'], errors='coerce')
+                df_user['purchase_month'] = df_user['purchase_date'].dt.month.fillna(0).astype(int)
+                df_user['purchase_day'] = df_user['purchase_date'].dt.day.fillna(0).astype(int)
+            except Exception:
+                df_user['purchase_month'] = 0
+                df_user['purchase_day'] = 0
+        else:
+            df_user['purchase_month'] = 0
+            df_user['purchase_day'] = 0
         
-        # Make prediction
+        # Feature engineering: Add aggregated features if missing
+        # These are typically calculated per customer, but for single prediction we use defaults
+        if 'mean_purchase_amount' not in df_user.columns:
+            purchase_amt = df_user.get('purchase_amount', pd.Series([100.0])).iloc[0]
+            df_user['mean_purchase_amount'] = purchase_amt
+        if 'transaction_count' not in df_user.columns:
+            df_user['transaction_count'] = 1
+        
+        # Ensure transaction_id exists (may be needed by pipeline)
+        if 'transaction_id' not in df_user.columns:
+            df_user['transaction_id'] = 0
+        
+        # Ensure customer ID columns exist (pipeline may need them)
+        if 'customer_id' not in df_user.columns:
+            df_user['customer_id'] = df_user.get('customer_id_legacy', pd.Series([0])).iloc[0]
+        if 'customer_id_legacy' not in df_user.columns:
+            df_user['customer_id_legacy'] = df_user.get('customer_id', pd.Series([0])).iloc[0]
+        if 'customer_id_new' not in df_user.columns:
+            # Generate from customer_id if available
+            cust_id = df_user.get('customer_id', pd.Series([0])).iloc[0]
+            df_user['customer_id_new'] = f'A{int(cust_id)}' if pd.notna(cust_id) else 'A0'
+        
+        # The pipeline expects ALL columns from merged dataset (except product_category)
+        # So we keep all columns - the pipeline's transformers will handle them
+        
+        # Make prediction (pipeline will handle feature selection/transformation)
         prediction = product_pipeline.predict(df_user)[0]
         probabilities = product_pipeline.predict_proba(df_user)[0]
         
@@ -219,15 +235,22 @@ def extract_audio_features(audio_path):
         features['spectral_bandwidth_mean'] = np.mean(spectral_bandwidth)
         features['spectral_bandwidth_std'] = np.std(spectral_bandwidth)
         
-        # Convert to DataFrame with correct column order (must match training)
-        feature_cols = [f'mfcc_{i+1}_mean' for i in range(13)] + \
-                       [f'mfcc_{i+1}_std' for i in range(13)] + \
-                       ['spectral_rolloff_mean', 'spectral_rolloff_std',
-                        'rms_energy_mean', 'rms_energy_std',
-                        'zero_crossing_rate_mean', 'zero_crossing_rate_std',
-                        'spectral_centroid_mean', 'spectral_centroid_std',
-                        'chroma_mean', 'chroma_std',
-                        'spectral_bandwidth_mean', 'spectral_bandwidth_std']
+        # Convert to DataFrame with correct column order (must match training CSV)
+        # Order: mfcc_1_mean, mfcc_1_std, mfcc_2_mean, mfcc_2_std, ... (alternating)
+        feature_cols = []
+        for i in range(13):
+            feature_cols.append(f'mfcc_{i+1}_mean')
+            feature_cols.append(f'mfcc_{i+1}_std')
+        
+        # Then add other features in the same order as CSV
+        feature_cols.extend([
+            'spectral_rolloff_mean', 'spectral_rolloff_std',
+            'rms_energy_mean', 'rms_energy_std',
+            'zero_crossing_rate_mean', 'zero_crossing_rate_std',
+            'spectral_centroid_mean', 'spectral_centroid_std',
+            'chroma_mean', 'chroma_std',
+            'spectral_bandwidth_mean', 'spectral_bandwidth_std'
+        ])
         
         return pd.DataFrame([features])[feature_cols]
     except Exception as e:

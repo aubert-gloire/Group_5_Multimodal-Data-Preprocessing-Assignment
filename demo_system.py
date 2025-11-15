@@ -29,6 +29,16 @@ ROOT = Path(__file__).parent
 MODELS_DIR = ROOT / 'models'
 DATASET_DIR = ROOT / 'Dataset'
 
+# Global variables for models 
+face_model = None
+face_scaler = None
+face_encoder = None
+mobilenet = None
+product_pipeline = None
+product_encoder = None
+voice_model = None
+audio_scaler = None
+
 # Load all models at startup
 print("Loading models...")
 try:
@@ -46,9 +56,21 @@ try:
     with open(MODELS_DIR / 'voiceprint_model.pkl', 'rb') as f:
         voice_model = pickle.load(f)
     
+    # Audio Scaler (required for voice model)
+    try:
+        with open(MODELS_DIR / 'audio_scaler.pkl', 'rb') as f:
+            audio_scaler = pickle.load(f)
+        print("✓ Audio scaler loaded")
+    except FileNotFoundError:
+        print("⚠️  Warning: audio_scaler.pkl not found. Voice validation may fail.")
+        print("   Run the audio processing notebook to generate the scaler.")
+        audio_scaler = None
+    
     print("✓ All models loaded successfully\n")
 except Exception as e:
     print(f"Error loading models: {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
 
@@ -128,6 +150,24 @@ def run_product_recommendation(user_data):
             user_data['transaction_count'] = 1
         
         df_user = pd.DataFrame([user_data])
+        
+        # Ensure all required features are present
+        missing_features = [f for f in required_features if f not in df_user.columns]
+        if missing_features:
+            print(f"⚠️  Warning: Missing features: {missing_features}")
+            print("   Using default values for missing features")
+            for feat in missing_features:
+                if feat == 'social_media_platform':
+                    df_user[feat] = 'Twitter'
+                elif feat == 'review_sentiment':
+                    df_user[feat] = 'Neutral'
+                else:
+                    df_user[feat] = 0.0
+        
+        # Select only required features (in correct order)
+        df_user = df_user[required_features]
+        
+        # Make prediction
         prediction = product_pipeline.predict(df_user)[0]
         probabilities = product_pipeline.predict_proba(df_user)[0]
         
@@ -140,6 +180,8 @@ def run_product_recommendation(user_data):
         return product, confidence, True
     except Exception as e:
         print(f"✗ Product Recommendation Error: {e}")
+        import traceback
+        traceback.print_exc()
         return None, 0, False
 
 
@@ -202,13 +244,17 @@ def extract_audio_features(audio_path):
 
 
 def voice_validation(audio_path, expected_user=None):
-    """Step 3: Voice Validation Model"""
+    """Step 3: Voice Validation Model (binary: authorized=1, unauthorized=0)"""
     print("\n" + "=" * 60)
     print("STEP 3: VOICE VALIDATION")
     print("=" * 60)
     
     if not os.path.exists(audio_path):
         print(f"✗ Audio file not found: {audio_path}")
+        return False
+    
+    if audio_scaler is None:
+        print("✗ Audio scaler not loaded. Cannot perform voice validation.")
         return False
     
     print(f"Processing audio: {os.path.basename(audio_path)}")
@@ -218,21 +264,29 @@ def voice_validation(audio_path, expected_user=None):
         return False
     
     try:
-        prediction = voice_model.predict(features)[0]
-        probabilities = voice_model.predict_proba(features)[0]
+        # Scale features before prediction 
+        features_scaled = audio_scaler.transform(features)
+        
+        # Voice model is binary: 0=unauthorized, 1=authorized
+        prediction = voice_model.predict(features_scaled)[0]
+        probabilities = voice_model.predict_proba(features_scaled)[0]
         confidence = float(probabilities[prediction])
         
-        # Assuming voice_model outputs user labels
-        print(f"Voice Match Confidence: {confidence:.2%}")
+        is_authorized = bool(prediction)
         
-        if confidence >= 0.5:
+        print(f"Voice Verification Result: {'AUTHORIZED' if is_authorized else 'UNAUTHORIZED'}")
+        print(f"Confidence: {confidence:.2%}")
+        
+        if is_authorized:
             print(f"✓ Voice Validation: APPROVED")
             return True
         else:
-            print(f"✗ Voice Validation: REJECTED")
+            print(f"✗ Voice Validation: REJECTED (Unauthorized speaker)")
             return False
     except Exception as e:
         print(f"✗ Voice Validation Error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 

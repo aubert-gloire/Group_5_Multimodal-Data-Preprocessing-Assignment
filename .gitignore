@@ -5,15 +5,12 @@ venv/
 ENV/
 env/
 
-# Generated/large artifacts
-augmented_images/
-augmented_images/group_images/
+# Generated/large artifacts - keep some samples for demonstration
+# augmented_images/ are kept to show augmentation work
+# If files are too large, consider keeping only representative samples
 
-# Feature outputs - keep for assignment submission
-image_features.csv
-image_features_clean.csv
-# If you want to ignore all CSV outputs uncomment the next line
-# *.csv
+# Note: image_features.csv and audio_features.csv are required deliverables
+# They are NOT ignored to ensure they appear on GitHub
 
 # Python cache / build
 __pycache__/

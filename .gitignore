@@ -9,11 +9,9 @@ env/
 augmented_images/
 augmented_images/group_images/
 
-# Feature outputs (generated) - keep clean CSV/NPZ out of git
+# Feature outputs - keep for assignment submission
 image_features.csv
 image_features_clean.csv
-image_features_clean.npz
-*.npz
 # If you want to ignore all CSV outputs uncomment the next line
 # *.csv
 
@@ -32,6 +30,3 @@ Thumbs.db
 
 # Local environment files
 *.env
-*.joblib
-*.pkl
-*.npz

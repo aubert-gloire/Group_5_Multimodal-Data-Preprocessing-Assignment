@@ -3,7 +3,11 @@ User Identity and Product Recommendation System
 Demonstrates the complete authentication and prediction flow:
 Start → Face Recognition → Product Recommendation → Voice Validation → Display Product
 """
+# MUST set environment variables BEFORE any imports that load TensorFlow
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress INFO, WARNING, and ERROR messages
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN messages
+
 import sys
 import argparse
 import joblib
@@ -15,7 +19,7 @@ from PIL import Image
 import warnings
 warnings.filterwarnings('ignore')
 
-# Import deep learning libraries
+# Import deep learning libraries AFTER setting environment variables
 try:
     from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input
     import librosa
@@ -60,13 +64,13 @@ try:
     try:
         with open(MODELS_DIR / 'audio_scaler.pkl', 'rb') as f:
             audio_scaler = pickle.load(f)
-        print("✓ Audio scaler loaded")
+        print("[OK] Audio scaler loaded")
     except FileNotFoundError:
-        print("⚠️  Warning: audio_scaler.pkl not found. Voice validation may fail.")
+        print("[WARNING] audio_scaler.pkl not found. Voice validation may fail.")
         print("   Run the audio processing notebook to generate the scaler.")
         audio_scaler = None
     
-    print("✓ All models loaded successfully\n")
+    print("[OK] All models loaded successfully\n")
 except Exception as e:
     print(f"Error loading models: {e}")
     import traceback
@@ -95,7 +99,7 @@ def facial_recognition(image_path, threshold=0.6):
     print("=" * 60)
     
     if not os.path.exists(image_path):
-        print(f"✗ Image not found: {image_path}")
+        print(f"[ERROR] Image not found: {image_path}")
         return None, False
     
     print(f"Processing image: {os.path.basename(image_path)}")
@@ -116,18 +120,19 @@ def facial_recognition(image_path, threshold=0.6):
     print(f"Confidence: {confidence:.2%}")
     
     if confidence >= threshold:
-        print(f"✓ Face Recognition: PASS (Confidence >= {threshold:.0%})")
+        print(f"[PASS] Face Recognition: PASS (Confidence >= {threshold:.0%})")
         return user_name, True
     else:
-        print(f"✗ Face Recognition: FAIL (Low confidence)")
+        print(f"[FAIL] Face Recognition: FAIL (Low confidence)")
         return user_name, False
 
 
-def run_product_recommendation(user_data):
+def run_product_recommendation(user_data, display=True):
     """Step 2: Run Product Recommendation Model"""
-    print("\n" + "=" * 60)
-    print("STEP 2: PRODUCT RECOMMENDATION")
-    print("=" * 60)
+    if display:
+        print("\n" + "=" * 60)
+        print("STEP 2: PRODUCT RECOMMENDATION")
+        print("=" * 60)
     
     try:
         # Convert user_data to DataFrame
@@ -182,14 +187,16 @@ def run_product_recommendation(user_data):
         product = product_encoder.inverse_transform([prediction])[0]
         confidence = float(probabilities[prediction])
         
-        print(f"Predicted Product: {product}")
-        print(f"Confidence: {confidence:.2%}")
+        if display:
+            print(f"Recommendation generated (locked until voice verification)")
+            print(f"Processing...")
         
         return product, confidence, True
     except Exception as e:
-        print(f"✗ Product Recommendation Error: {e}")
-        import traceback
-        traceback.print_exc()
+        if display:
+            print(f"[ERROR] Product Recommendation Error: {e}")
+            import traceback
+            traceback.print_exc()
         return None, 0, False
 
 
@@ -267,11 +274,11 @@ def voice_validation(audio_path, expected_user=None):
     print("=" * 60)
     
     if not os.path.exists(audio_path):
-        print(f"✗ Audio file not found: {audio_path}")
+        print(f"[ERROR] Audio file not found: {audio_path}")
         return False
     
     if audio_scaler is None:
-        print("✗ Audio scaler not loaded. Cannot perform voice validation.")
+        print("[ERROR] Audio scaler not loaded. Cannot perform voice validation.")
         return False
     
     print(f"Processing audio: {os.path.basename(audio_path)}")
@@ -295,13 +302,13 @@ def voice_validation(audio_path, expected_user=None):
         print(f"Confidence: {confidence:.2%}")
         
         if is_authorized:
-            print(f"✓ Voice Validation: APPROVED")
+            print(f"[PASS] Voice Validation: APPROVED")
             return True
         else:
-            print(f"✗ Voice Validation: REJECTED (Unauthorized speaker)")
+            print(f"[FAIL] Voice Validation: REJECTED (Unauthorized speaker)")
             return False
     except Exception as e:
-        print(f"✗ Voice Validation Error: {e}")
+        print(f"[ERROR] Voice Validation Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -312,7 +319,7 @@ def display_final_result(product, confidence):
     print("\n" + "=" * 60)
     print("FINAL RESULT")
     print("=" * 60)
-    print(f"✓ AUTHENTICATION SUCCESSFUL")
+    print(f"[SUCCESS] AUTHENTICATION SUCCESSFUL")
     print(f"\n Recommended Product: {product}")
     print(f" Confidence Score: {confidence:.2%}")
     print("=" * 60)
@@ -323,7 +330,7 @@ def access_denied(stage):
     print("\n" + "=" * 60)
     print("ACCESS DENIED")
     print("=" * 60)
-    print(f"✗ Authentication failed at: {stage}")
+    print(f"[DENIED] Authentication failed at: {stage}")
     print("User is not authorized to access the system.")
     print("=" * 60)
 
@@ -338,15 +345,16 @@ def simulate_authorized_flow(image_path, audio_path, user_data):
         access_denied("Facial Recognition")
         return False
     
-    # Step 2: Product Recommendation (runs after face passes)
-    product, confidence, product_passed = run_product_recommendation(user_data)
+    # Step 2: Product Recommendation (generate prediction but don't display yet)
+    product, confidence, product_passed = run_product_recommendation(user_data, display=True)
     if not product_passed:
         access_denied("Product Recommendation")
         return False
     
-    # Step 3: Voice Validation (must approve before showing product)
+    # Step 3: Voice Validation (must pass before revealing product)
     voice_passed = voice_validation(audio_path, expected_user=user_name)
     if not voice_passed:
+        print("\n[SECURITY] Product recommendation locked - Voice validation failed")
         access_denied("Voice Validation")
         return False
     
@@ -357,14 +365,14 @@ def simulate_authorized_flow(image_path, audio_path, user_data):
 
 def simulate_unauthorized_flow(image_path, audio_path, user_data, fail_at='face'):
     """Simulate an unauthorized attempt"""
-    print("\n🔐 Starting User Identity and Product Recommendation System")
-    print(f"⚠️  Simulating UNAUTHORIZED attempt (will fail at {fail_at})\n")
+    print("\n[UNAUTHORIZED TEST] Starting User Identity and Product Recommendation System")
+    print(f"[WARNING] Simulating UNAUTHORIZED attempt (will fail at {fail_at})\n")
     
     if fail_at == 'face':
         print("=" * 60)
         print("STEP 1: FACIAL RECOGNITION")
         print("=" * 60)
-        print("✗ Face not recognized or confidence too low")
+        print("[FAIL] Face not recognized or confidence too low")
         access_denied("Facial Recognition")
         return False
     
@@ -374,7 +382,7 @@ def simulate_unauthorized_flow(image_path, audio_path, user_data, fail_at='face'
         access_denied("Facial Recognition")
         return False
     
-    product, confidence, product_passed = run_product_recommendation(user_data)
+    product, confidence, product_passed = run_product_recommendation(user_data, display=True)
     if not product_passed:
         access_denied("Product Recommendation")
         return False
@@ -383,7 +391,8 @@ def simulate_unauthorized_flow(image_path, audio_path, user_data, fail_at='face'
         print("\n" + "=" * 60)
         print("STEP 3: VOICE VALIDATION")
         print("=" * 60)
-        print("✗ Voice does not match or unauthorized speaker")
+        print("[FAIL] Voice does not match or unauthorized speaker")
+        print("\n[SECURITY] Product recommendation locked - Voice validation failed")
         access_denied("Voice Validation")
         return False
     
@@ -409,11 +418,11 @@ def main():
         # Load a real sample from the merged dataset
         try:
             df = pd.read_csv(DATASET_DIR / 'merged_customer_data.csv')
-            user_data = df.iloc[0].to_dict()
+            user_data = df.iloc[args.row_index].to_dict()
             # Remove the target column if present
             if 'product_category' in user_data:
                 del user_data['product_category']
-            print(f"Loaded user data from merged_customer_data.csv (row 0)")
+            print(f"Loaded user data from merged_customer_data.csv (row {args.row_index})")
         except Exception as e:
             print(f"Warning: Could not load default user data: {e}")
             # Fallback minimal data
